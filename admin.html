@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDG RIT Admin Dashboard</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background: #f4f7fc;
+            color: #202124;
+        }
+
+        header {
+            background: white;
+            padding: 22px 6%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        header h1 {
+            color: #4285f4;
+            font-size: 26px;
+        }
+
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 13px 22px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #2868d7;
+        }
+
+        .container {
+            padding: 40px 6%;
+        }
+
+        .heading {
+            margin-bottom: 30px;
+        }
+
+        .heading h2 {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+
+        .heading p {
+            color: #555;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 22px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 28px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+        }
+
+        .stat-card h3 {
+            color: #555;
+            font-size: 16px;
+            margin-bottom: 18px;
+        }
+
+        .stat-card p {
+            color: #4285f4;
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        .table-box {
+            background: white;
+            padding: 27px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            overflow-x: auto;
+        }
+
+        .table-box h2 {
+            margin-bottom: 22px;
+            font-size: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 650px;
+        }
+
+        th {
+            background: #e8f0fe;
+            padding: 16px;
+            text-align: left;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:hover {
+            background: #f8faff;
+        }
+
+        #status {
+            margin-bottom: 20px;
+            color: #555;
+        }
+
+        @media (max-width: 800px) {
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 25px 4%;
+            }
+
+            header {
+                padding: 18px 4%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>GDG RIT Admin</h1>
+        <button onclick="loadDashboard()">Refresh Data</button>
+    </header>
+
+    <div class="container">
+
+        <div class="heading">
+            <h2>Dashboard Overview</h2>
+            <p>Manage your GDG community registrations.</p>
+        </div>
+
+        <p id="status">Loading dashboard...</p>
+
+        <!-- Dashboard Statistics -->
+        <div class="stats">
+
+            <div class="stat-card">
+                <h3>Total Members</h3>
+                <p id="totalMembers">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Event Registrations</h3>
+                <p id="totalEvents">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Available Events</h3>
+                <p id="availableEvents">3</p>
+            </div>
+
+        </div>
+
+        <!-- Registered Members -->
+        <div class="table-box">
+            <h2>Registered Members</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>USN</th>
+                        <th>Department</th>
+                    </tr>
+                </thead>
+
+                <tbody id="memberTable">
+                    <tr>
+                        <td colspan="5">Loading members...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Event Registrations -->
+        <div class="table-box">
+            <h2>Event Registrations</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Event</th>
+                        <th>Student Name</th>
+                        <th>Email</th>
+                        <th>USN</th>
+                    </tr>
+                </thead>
+
+                <tbody id="eventTable">
+                    <tr>
+                        <td colspan="5">Loading registrations...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Contact Messages -->
+        <div class="table-box">
+            <h2>Contact Messages</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Subject</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+
+                <tbody id="contactTable">
+                    <tr>
+                        <td colspan="5">Loading messages...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+
+        const API_URL = "http://127.0.0.1:5000";
+
+        function escapeHTML(value) {
+            return String(value ?? "").replace(/[&<>"']/g, function(character) {
+                const entities = {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;"
+                };
+
+                return entities[character];
+            });
+        }
+
+        async function loadDashboard() {
+
+            const status = document.getElementById("status");
+
+            status.textContent = "Refreshing dashboard...";
+
+            try {
+
+                const [memberResponse, eventResponse, contactResponse] =
+                    await Promise.all([
+                        fetch(`${API_URL}/members`),
+                        fetch(`${API_URL}/event-registrations`),
+                        fetch(`${API_URL}/contact-messages`)
+                    ]);
+
+                if (!memberResponse.ok ||
+                    !eventResponse.ok ||
+                    !contactResponse.ok) {
+
+                    throw new Error("Unable to fetch dashboard data.");
+                }
+
+                const members = await memberResponse.json();
+                const events = await eventResponse.json();
+                const contacts = await contactResponse.json();
+
+                // Update statistics
+                document.getElementById("totalMembers").textContent =
+                    members.length;
+
+                document.getElementById("totalEvents").textContent =
+                    events.length;
+
+                document.getElementById("availableEvents").textContent = 3;
+
+                // Display members
+                document.getElementById("memberTable").innerHTML =
+                    members.length ? members.map(member => `
+                        <tr>
+                            <td>${escapeHTML(member.id)}</td>
+                            <td>${escapeHTML(member.name)}</td>
+                            <td>${escapeHTML(member.email)}</td>
+                            <td>${escapeHTML(member.usn)}</td>
+                            <td>${escapeHTML(member.department)}</td>
+                        </tr>
+                    `).join("") :
+                    `<tr><td colspan="5">No members registered yet.</td></tr>`;
+
+                // Display event registrations
+                document.getElementById("eventTable").innerHTML =
+                    events.length ? events.map(event => `
+                        <tr>
+                            <td>${escapeHTML(event.id)}</td>
+                            <td>${escapeHTML(event.event_name)}</td>
+                            <td>${escapeHTML(event.student_name)}</td>
+                            <td>${escapeHTML(event.email)}</td>
+                            <td>${escapeHTML(event.usn)}</td>
+                        </tr>
+                    `).join("") :
+                    `<tr><td colspan="5">No event registrations yet.</td></tr>`;
+
+                // Display contact messages
+                document.getElementById("contactTable").innerHTML =
+                    contacts.length ? contacts.map(contact => `
+                        <tr>
+                            <td>${escapeHTML(contact.id)}</td>
+                            <td>${escapeHTML(contact.name)}</td>
+                            <td>${escapeHTML(contact.email)}</td>
+                            <td>${escapeHTML(contact.subject)}</td>
+                            <td>${escapeHTML(contact.message)}</td>
+                        </tr>
+                    `).join("") :
+                    `<tr><td colspan="5">No contact messages yet.</td></tr>`;
+
+                status.textContent = "Dashboard updated successfully!";
+
+            } catch (error) {
+
+                console.error("Dashboard Error:", error);
+
+                status.textContent =
+                    "Unable to connect to the backend. Please check whether Flask is running.";
+
+            }
+        }
+
+        // Load dashboard when page opens
+        window.addEventListener("DOMContentLoaded", loadDashboard);
+
+    </script>
+
+</body>
+</html>
