@@ -1,9 +1,24 @@
+import os
+import sqlite3
+import hmac
+from functools import wraps
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 app = Flask(__name__)
+
 CORS(app)
+
+# Admin credentials and secret must be configured as environment variables
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+
+if not ADMIN_USERNAME or not ADMIN_PASSWORD or not SECRET_KEY:
+    raise RuntimeError("Set ADMIN_USERNAME, ADMIN_PASSWORD and SECRET_KEY")
+
+serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 # Database connection
 def get_db():
@@ -11,7 +26,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# Create database table
+# Create database tables
 def create_table():
     conn = get_db()
 
@@ -34,29 +49,79 @@ def create_table():
             usn TEXT NOT NULL
         )
     """)
+
     conn.execute("""
-    CREATE TABLE IF NOT EXISTS contact_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        message TEXT NOT NULL
-    )
-""")
+        CREATE TABLE IF NOT EXISTS contact_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            message TEXT NOT NULL
+        )
+    """)
 
     conn.commit()
     conn.close()
+
+
+# Protect admin APIs
+def admin_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+
+        token = request.headers.get("Authorization", "")
+
+        if not token.startswith("Bearer "):
+            return jsonify({"message": "Please log in"}), 401
+
+        try:
+            data = serializer.loads(token[7:], max_age=3600)
+
+            if data.get("username") != ADMIN_USERNAME:
+                return jsonify({"message": "Invalid login"}), 401
+
+        except (BadSignature, SignatureExpired):
+            return jsonify({"message": "Session expired. Log in again."}), 401
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
 
 # Home route
 @app.route("/")
 def home():
     return "GDG RIT Backend is Running!"
 
-# Member registration
+
+# Admin login
+@app.route("/admin-login", methods=["POST"])
+def admin_login():
+
+    data = request.get_json(silent=True) or {}
+
+    username = data.get("username", "")
+    password = data.get("password", "")
+
+    if (
+        hmac.compare_digest(username, ADMIN_USERNAME)
+        and hmac.compare_digest(password, ADMIN_PASSWORD)
+    ):
+        token = serializer.dumps({"username": ADMIN_USERNAME})
+
+        return jsonify({
+            "message": "Login successful",
+            "token": token
+        })
+
+    return jsonify({"message": "Incorrect username or password"}), 401
+
+
+# Member registration - public
 @app.route("/register", methods=["POST"])
 def register():
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     name = data.get("name")
     email = data.get("email")
@@ -67,32 +132,33 @@ def register():
         return jsonify({"message": "All fields are required"}), 400
 
     conn = get_db()
-
     conn.execute("""
         INSERT INTO members (name, email, usn, department)
         VALUES (?, ?, ?, ?)
     """, (name, email, usn, department))
-
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Registration successful!"})
 
-# View registered members
+
+# View members - admin only
 @app.route("/members", methods=["GET"])
+@admin_required
 def members():
 
     conn = get_db()
-
     data = conn.execute("SELECT * FROM members").fetchall()
-
     conn.close()
 
     return jsonify([dict(row) for row in data])
+
+
+# Event registration - public
 @app.route("/event-register", methods=["POST"])
 def event_register():
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     event_name = data.get("event_name")
     student_name = data.get("student_name")
@@ -103,36 +169,36 @@ def event_register():
         return jsonify({"message": "All fields are required"}), 400
 
     conn = get_db()
-
     conn.execute("""
         INSERT INTO event_registrations
         (event_name, student_name, email, usn)
         VALUES (?, ?, ?, ?)
     """, (event_name, student_name, email, usn))
-
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Event registration successful!"})
 
 
+# View event registrations - admin only
 @app.route("/event-registrations", methods=["GET"])
+@admin_required
 def get_event_registrations():
 
     conn = get_db()
-
     data = conn.execute(
         "SELECT * FROM event_registrations"
     ).fetchall()
-
     conn.close()
 
     return jsonify([dict(row) for row in data])
-    # SAVE CONTACT MESSAGES
+
+
+# Contact form - public
 @app.route("/contact", methods=["POST"])
 def contact():
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     name = data.get("name")
     email = data.get("email")
@@ -143,31 +209,32 @@ def contact():
         return jsonify({"message": "Please fill all fields"}), 400
 
     conn = get_db()
-
     conn.execute("""
         INSERT INTO contact_messages (name, email, subject, message)
         VALUES (?, ?, ?, ?)
     """, (name, email, subject, message))
-
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Message sent successfully!"})
 
 
-# VIEW CONTACT MESSAGES
+# View contact messages - admin only
 @app.route("/contact-messages", methods=["GET"])
+@admin_required
 def get_contact_messages():
 
     conn = get_db()
-
     data = conn.execute(
         "SELECT * FROM contact_messages ORDER BY id DESC"
     ).fetchall()
-
     conn.close()
 
     return jsonify([dict(row) for row in data])
+
+
+# Create tables when the application starts
+create_table()
+
 if __name__ == "__main__":
-    create_table()
-    app.run(debug=True)
+    app.run(debug=False)
